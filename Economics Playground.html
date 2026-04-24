@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Economics Playground</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script data-goatcounter="https://ahmethmz.goatcounter.com/count"
+        async src="//gc.zgo.at/count.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; padding: 0; background: #f0ece2; font-family: Inter, sans-serif; }
+  * { box-sizing: border-box; }
+  input[type="range"] { -webkit-appearance: none; appearance: none; height: 4px;
+    background: #d8d4cc; outline: none; border-radius: 0; }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; width: 12px; height: 12px;
+    background: #0e1116; cursor: pointer; border-radius: 50%; }
+  input[type="range"]::-moz-range-thumb {
+    width: 12px; height: 12px; background: #0e1116; cursor: pointer;
+    border: none; border-radius: 50%; }
+  .tabbtn { transition: background .12s, color .12s; }
+  .tabbtn:hover { background: rgba(255,255,255,0.06); }
+  .canvas-toggle { position: fixed; bottom: 16px; right: 16px; z-index: 100;
+    background: #0e1116; color: #fafaf7; border: none; padding: 8px 14px;
+    font: 11px/1 'JetBrains Mono', monospace; letter-spacing: 1; cursor: pointer; }
+</style>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script src="data/macro.js?v=2"></script>
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="tweaks-panel.jsx"></script>
+<script type="text/babel" src="lib/charts.jsx"></script>
+<script type="text/babel" src="lib/models.jsx"></script>
+<script type="text/babel" src="lib/ui.jsx"></script>
+<script type="text/babel" src="lib/edu.jsx"></script>
+<script type="text/babel" src="lib/quiz.jsx"></script>
+<script type="text/babel" src="lib/tour.jsx"></script>
+<script type="text/babel" src="directions/briefing_glossary.jsx"></script>
+<script type="text/babel" src="directions/briefing_sources.jsx"></script>
+<script type="text/babel" src="directions/briefing.jsx"></script>
+<script type="text/babel" src="directions/console.jsx"></script>
+<script type="text/babel" src="directions/sandbox.jsx"></script>
+<script type="text/babel" src="directions/scenario_lab.jsx"></script>
+<script type="text/babel" src="directions/country_lab.jsx"></script>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+
+const { useState, useEffect } = React;
+
+const APPS = [
+{ id: "briefing", letter: "A", name: "The Briefing", sub: "Editorial dashboard", Comp: BriefingApp, bg: "#fafaf7", fg: "#0e1116", accent: "oklch(0.55 0.18 25)" },
+{ id: "console", letter: "B", name: "The Console", sub: "Terminal workstation", Comp: ConsoleApp, bg: "#0e1116", fg: "#dde3ee", accent: "oklch(0.7 0.15 25)" },
+{ id: "sandbox", letter: "C", name: "The Sandbox", sub: "Node-graph propagation", Comp: SandboxApp, bg: "#fafaf7", fg: "#0e1116", accent: "oklch(0.55 0.15 145)" },
+{ id: "lab", letter: "D", name: "Scenario Lab", sub: "What-if engine", Comp: ScenarioLabApp, bg: "#fafaf7", fg: "#0e1116", accent: "oklch(0.55 0.13 220)" }];
+
+
+function App() {
+  // Responsive scale: when viewport < 1360, scale app down proportionally.
+  const [vw, setVw] = useState(typeof window !== "undefined" ? window.innerWidth : 1400);
+  useEffect(() => {
+    const r = () => setVw(window.innerWidth);
+    window.addEventListener("resize", r);
+    return () => window.removeEventListener("resize", r);
+  }, []);
+  const APP_W = 1320;
+  const MIN_SCALE = 0.32;
+  const scale = Math.max(MIN_SCALE, Math.min(1, vw / (APP_W + 40)));
+
+  // Read from URL hash: #app=briefing or #compare for canvas mode
+  const initial = (() => {
+    const h = window.location.hash;
+    if (h.startsWith("#compare")) return { mode: "canvas", app: "briefing" };
+    const m = h.match(/#app=([a-z]+)/);
+    return { mode: "single", app: m ? m[1] : "briefing" };
+  })();
+
+  const [mode, setMode] = useState(initial.mode);
+  const [active, setActive] = useState(initial.app);
+
+  useEffect(() => {
+    // Scenario Lab manages its own hash (encodes the full scenario state).
+    // Don't clobber it when active. Same for canvas mode.
+    if (mode === "canvas") { window.location.hash = "compare"; return; }
+    if (active === "lab") return;
+    window.location.hash = "app=" + active;
+  }, [mode, active]);
+
+  if (mode === "canvas") {
+    return (
+      <>
+        <DesignCanvas
+          title="Economics Playground"
+          subtitle="Compare all four directions side-by-side. Click any artboard label to focus it fullscreen.">
+          
+          {APPS.map((a) =>
+          <DCSection key={a.id} id={a.id} title={`Direction ${a.letter} — ${a.name}`}
+          description={a.sub}>
+              <DCArtboard id={a.id + "-app"} label={a.name}
+            width={1320} height={900}>
+                <a.Comp />
+              </DCArtboard>
+            </DCSection>
+          )}
+        </DesignCanvas>
+        <button className="canvas-toggle" onClick={() => setMode("single")}>← Back to apps</button>
+      </>);
+
+  }
+
+  const cur = APPS.find((a) => a.id === active);
+
+  const appContent = (
+    <div style={{ minHeight: "100vh", background: cur.bg, width: APP_W }}>
+      {/* Top tab bar */}
+      <header style={{ position: "sticky", top: 0, zIndex: 50,
+        background: "#0e1116", color: "#dde3ee",
+        borderBottom: "1px solid #2a3140",
+        display: "flex", alignItems: "stretch" }}>
+        {/* Brand */}
+        <div style={{ display: "flex", alignItems: "center", gap: 14,
+          padding: "0 24px", borderRight: "1px solid #2a3140" }}>
+          <div style={{ width: 22, height: 22, position: "relative" }}>
+            <div style={{ position: "absolute", inset: 0, border: "1px solid #dde3ee" }} />
+            <div style={{ position: "absolute", left: 4, bottom: 4, width: 4, height: 8, background: "#dde3ee" }} />
+            <div style={{ position: "absolute", left: 9, bottom: 4, width: 4, height: 14, background: "oklch(0.7 0.15 25)" }} />
+            <div style={{ position: "absolute", left: 14, bottom: 4, width: 4, height: 11, background: "#dde3ee" }} />
+          </div>
+          <div>
+            <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 9,
+              letterSpacing: 2, color: "#7a8599" }}>ECONOMICS</div>
+            <div style={{ fontFamily: "'IBM Plex Serif', serif", fontSize: 14,
+              letterSpacing: -0.2, lineHeight: 1 }}>Playground</div>
+          </div>
+        </div>
+
+        {/* App tabs */}
+        <nav style={{ display: "flex", flex: 1 }}>
+          {APPS.map((a) => {
+            const isActive = active === a.id;
+            return (
+              <button key={a.id} className="tabbtn" onClick={() => setActive(a.id)}
+              style={{ flex: 1, display: "flex", alignItems: "center", gap: 12,
+                padding: "0 20px",
+                background: isActive ? "#181d27" : "transparent",
+                border: "none", borderRight: "1px solid #2a3140",
+                color: isActive ? "#dde3ee" : "#7a8599",
+                cursor: "pointer", textAlign: "left",
+                position: "relative" }}>
+                {isActive &&
+                <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2,
+                  background: a.accent }} />
+                }
+                <div style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 18,
+                  fontWeight: 500, color: isActive ? a.accent : "#5a6478",
+                  minWidth: 16 }}>
+                  {a.letter}
+                </div>
+                <div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 13,
+                    fontWeight: isActive ? 500 : 400 }}>{a.name}</div>
+                  <div style={{ fontFamily: "Inter, sans-serif", fontSize: 10,
+                    color: "#7a8599", marginTop: 2 }}>{a.sub}</div>
+                </div>
+              </button>);
+
+          })}
+        </nav>
+
+        {/* Right side */}
+        <div style={{ display: "flex", alignItems: "center", gap: 16,
+          padding: "0 20px", borderLeft: "1px solid #2a3140" }}>
+          <div style={{ textAlign: "right", lineHeight: 1.25 }}>
+            <div style={{ fontFamily: "'IBM Plex Serif', serif", fontSize: 12,
+              color: "#dde3ee", textAlign: "center" }}>Ahmet Hamza Yıldırım</div>
+            <a href="mailto:ahmetyildirim@ihu.edu.tr?subject=Economics%20Playground"
+            style={{ fontFamily: "JetBrains Mono, monospace", fontSize: 10,
+              color: "#7a8599", textDecoration: "none", letterSpacing: 0.3, textAlign: "center" }}>
+              ahmetyildirim@ihu.edu.tr
+            </a>
+          </div>
+          <TourLauncher onNavigate={({ app, tab }) => {
+            setMode("single");
+            setActive(app);
+            if (tab) setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("briefing-set-tab", { detail: tab }));
+            }, 50);
+          }} />
+        </div>
+      </header>
+
+      {/* App body */}
+      <main style={{ display: "flex", justifyContent: "center" }}>
+        <div style={{ width: APP_W }}>
+          <cur.Comp />
+        </div>
+      </main>
+    </div>);
+
+  return (
+    <div style={{ width: "100%", overflowX: scale < 1 ? "hidden" : "visible",
+                  background: "#0e1116",
+                  display: "flex", justifyContent: "center" }}>
+      <div style={{ width: APP_W,
+                    transform: scale < 1 ? `scale(${scale})` : "none",
+                    transformOrigin: "top center",
+                    height: scale < 1 ? `calc(var(--app-h, 100vh) * ${scale})` : "auto" }}
+           ref={(el) => {
+             if (el && el.firstChild) {
+               const h = el.firstChild.offsetHeight;
+               el.style.setProperty("--app-h", h + "px");
+             }
+           }}>
+        {appContent}
+      </div>
+    </div>);
+
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
